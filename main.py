@@ -57,7 +57,19 @@ def salvar_imagens_processadas(imagens, caminhos, pasta_destino):
         caminho_destino = os.path.join(pasta_destino, nome_arquivo)
 
         cv2.imwrite(caminho_destino, imagens[i])
-        print(f"Imagem processada {i+1}/{len(imagens)} salva em '{caminho_destino}'.")
+        # print(f"Imagem processada {i+1}/{len(imagens)} salva em '{caminho_destino}'.")
+
+
+def test(resultados):
+    images_test=[8,8,6,6,6,6,7,7,7,7,8,8,8,8,8,7,7,7,7,9,9,9,9,9,8,8,8,8,8,8,8,8,8,8,8]
+
+    count = 0
+    for i, resultado in enumerate(resultados):
+        count += images_test[i] - resultado
+    
+    print(count)
+    
+
 
 def extrair_caracteristicas(imagens_processadas):
     resultados = []
@@ -100,5 +112,7 @@ salvar_imagens_processadas(imagens_processadas, caminhos, pasta_destino)
 # Extrai quantidade de folhas da imagem
 resultados = extrair_caracteristicas(imagens_processadas)
 
-for i, resultado in enumerate(resultados):
-    print(f"Número de folhas na imagem {i+1}: {resultado}")
+test(resultados)
+
+# for i, resultado in enumerate(resultados):
+#     print(f"Número de folhas na imagem {i+1}: {resultado}")
