@@ -8,14 +8,17 @@ def preprocessamento(imagem, largura, altura):
     
     # Redimensionamento da imagem
     imagem_redimensionada = cv2.resize(imagem_cinza, (largura, altura))
-    
+
     # Aplicar um filtro de suavização para reduzir ruídos
     imagem_suavizada = cv2.GaussianBlur(imagem_redimensionada, (5, 5), 0)
+
+    # Aplicar erosão nas imagens para remover ruídos
+    imagem_erodida = cv2.erode(imagem_suavizada, (3, 3), iterations=1)
 
     # Normalização dos valores de pixel para o intervalo [0, 1]
     # imagem_normalizada = imagem_redimensionada.astype(np.float32) / 255.0
 
-    return imagem_suavizada
+    return imagem_erodida
 
 def processar_imagens_pasta(pasta, largura, altura):
     imagens_processadas = []
