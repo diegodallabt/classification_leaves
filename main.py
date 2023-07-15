@@ -4,21 +4,26 @@ import numpy as np
 
 def preprocessamento(imagem, largura, altura):
     # Conversão para tons de cinza
-    imagem_cinza = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY)
-    
+    imagem_processada = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY)
+
     # Redimensionamento da imagem
-    imagem_redimensionada = cv2.resize(imagem_cinza, (largura, altura))
+    imagem_processada = cv2.resize(imagem_processada, (largura, altura))
 
     # Aplicar um filtro de suavização para reduzir ruídos
-    imagem_suavizada = cv2.GaussianBlur(imagem_redimensionada, (5, 5), 0)
+    imagem_processada= cv2.GaussianBlur(imagem_processada, (5, 5), 0)
 
     # Aplicar erosão nas imagens para remover ruídos
-    imagem_erodida = cv2.erode(imagem_suavizada, (3, 3), iterations=1)
+    imagem_processada = cv2.erode(imagem_processada, (3, 3), iterations=2)
+
+    # Aplicar abertura e fechamento para remover ruídos
+    # kernel = np.ones((3, 3), np.uint8)
+    # imagem_processada = cv2.morphologyEx(imagem_processada, cv2.MORPH_OPEN, kernel)
+    # imagem_processada = cv2.morphologyEx(imagem_processada, cv2.MORPH_CLOSE, kernel)
 
     # Normalização dos valores de pixel para o intervalo [0, 1]
     # imagem_normalizada = imagem_redimensionada.astype(np.float32) / 255.0
 
-    return imagem_erodida
+    return imagem_processada
 
 def processar_imagens_pasta(pasta, largura, altura):
     imagens_processadas = []
@@ -65,7 +70,8 @@ def test(resultados):
 
     count = 0
     for i, resultado in enumerate(resultados):
-        count += images_test[i] - resultado
+        # Calcular o módulo da diferença entre o resultado e o valor esperado 
+        count += abs(images_test[i] - resultado)
     
     print(count)
     
@@ -114,5 +120,7 @@ resultados = extrair_caracteristicas(imagens_processadas)
 
 test(resultados)
 
-# for i, resultado in enumerate(resultados):
-#     print(f"Número de folhas na imagem {i+1}: {resultado}")
+images_test=[8,8,6,6,6,6,7,7,7,7,8,8,8,8,8,7,7,7,7,9,9,9,9,9,8,8,8,8,8,8,8,8,8,8,8]
+
+for i, resultado in enumerate(resultados):
+     print(f"Número de folhas na imagem {i+1}: {resultado} -> {images_test[i]}")
