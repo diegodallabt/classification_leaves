@@ -1,39 +1,20 @@
-import cv2
 import os
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
-from skimage.feature import peak_local_max
-from freeman_chain import extract_features
+from skimage.feature import graycomatrix, graycoprops, peak_local_max
+from skimage.measure import moments, moments_central, moments_normalized, moments_hu, centroid
+import json
+
+altura = 500
+largura = 500
 
 
-def preprocessamento(imagem, largura, altura):
-    # Conversão para tons de cinza
-    imagem_processada = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY)
-
-    # Redimensionamento da imagem
-    imagem_processada = cv2.resize(imagem_processada, (largura, altura))
-
-    # Aplicar um filtro de suavização para reduzir ruídos
-    imagem_processada = cv2.GaussianBlur(imagem_processada, (5, 5), 0)
-
-    # Aplicar erosão nas imagens para remover ruídos
-    imagem_processada = cv2.erode(imagem_processada, (3, 3), iterations=2)
-
-    # Aplicar abertura e fechamento para remover ruídos
-    # kernel = np.ones((3, 3), np.uint8)
-    # imagem_processada = cv2.morphologyEx(imagem_processada, cv2.MORPH_OPEN, kernel)
-    # imagem_processada = cv2.morphologyEx(imagem_processada, cv2.MORPH_CLOSE, kernel)
-
-    # Normalização dos valores de pixel para o intervalo [0, 1]
-    # imagem_normalizada = imagem_redimensionada.astype(np.float32) / 255.0
-
-    return imagem_processada
-
-
-def processar_imagens_pasta(pasta, largura, altura):
+def processar_imagens_pasta(pasta):
     imagens_processadas = []
+    imagens = []
     caminhos = []
 
     # Percorre todos os arquivos na pasta
@@ -41,25 +22,31 @@ def processar_imagens_pasta(pasta, largura, altura):
         # Verifica se o arquivo é uma imagem (extensões comuns: .jpg, .jpeg, .png)
         if nome_arquivo.endswith('.jpg') or nome_arquivo.endswith('.jpeg') or nome_arquivo.endswith('.png') or nome_arquivo.endswith('.bmp'):
             caminho = os.path.join(pasta, nome_arquivo)
-            imagem = cv2.imread(caminho)
+            caminhos.append(caminho)
 
-            if imagem is not None:
-                # Pré-processamento da imagem
-                imagem_processada = segment_leaves(imagem)
+    caminhos.sort()
+    for caminho in caminhos:
+        imagem = cv2.imread(caminho)
 
-                # Armazena a imagem processada e o caminho do arquivo
-                imagens_processadas.append(imagem_processada)
-                caminhos.append(caminho)
+        if imagem is not None:
+            # Pré-processamento da imagem
+            # print(caminho)
+            # input()
+            leaflets, image_processed = segment_leaves(imagem)
 
-    return imagens_processadas, caminhos
+            # Armazena a imagem processada e o caminho do arquivo
+            imagens_processadas.append(leaflets)
+            imagens.append(image_processed)
+
+    return imagens_processadas, imagens, caminhos
 
 
-def segment_leaves(imagem, min_contour_area=500):
+def segment_leaves(imagem):
     # Conversão para tons de cinza
     imagem_processada = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY)
 
     # Redimensionamento da imagem
-    imagem_processada = cv2.resize(imagem_processada, (254, 254))
+    imagem_processada = cv2.resize(imagem_processada, (altura, largura))
 
     # Apply a Gaussian blur to reduce noise
     blurred = cv2.GaussianBlur(imagem_processada, (5, 5), 0)
@@ -73,7 +60,7 @@ def segment_leaves(imagem, min_contour_area=500):
 
     # Use a lower threshold for the foreground markers
     _, sure_fg = cv2.threshold(
-        dist_transform, 0.3*dist_transform.max(), 255, 0)
+        dist_transform, 0.2*dist_transform.max(), 255, 0)
     sure_fg = np.uint8(sure_fg)
 
     # Perform a dilation to improve the markers
@@ -95,7 +82,7 @@ def segment_leaves(imagem, min_contour_area=500):
     # Mark the region of unknown with zero
     markers[unknown == 255] = 0
 
-    imagem = cv2.resize(imagem, (254, 254))
+    imagem = cv2.resize(imagem, (altura, largura))
 
     markers = cv2.watershed(imagem, markers)
     imagem[markers == -1] = [0, 0, 255]
@@ -116,12 +103,75 @@ def segment_leaves(imagem, min_contour_area=500):
 
     # Segment the leaves and store the images of individual leaves
     segmented_leaves = []
+    contador = 0
     for i, contour in enumerate(contours):
         x, y, w, h = cv2.boundingRect(contour)
         leaf = imagem[y:y+h, x:x+w]
         segmented_leaves.append(leaf)
+        # # Calcular as coordenadas do centro do retângulo
+        centro_x = int(x + w/2)
+        centro_y = int(y + h/2)
 
-    return segmented_leaves
+        # Desenhar um retângulo ao redor do objeto
+        cv2.rectangle(imagem, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+        # Adicionar texto com o contador no centro do retângulo
+        texto = str(contador)
+        tamanho_texto, _ = cv2.getTextSize(
+            texto, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)
+        texto_x = int(centro_x - tamanho_texto[0]/2)
+        texto_y = int(centro_y + tamanho_texto[1]/2)
+        cv2.putText(imagem, texto, (texto_x, texto_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+
+        # Incrementar o contador
+        contador += 1
+
+    return segmented_leaves, imagem
+
+
+def extract_features(leaf):
+    # Convert the image to grayscale
+    gray = cv2.cvtColor(leaf, cv2.COLOR_BGR2GRAY)
+
+    # Calculate color features
+    # Median color for each channel
+    median_color = np.median(leaf, axis=(0, 1))
+
+    # Calculate texture features
+    glcm = graycomatrix(
+        gray, [1], [0, np.pi/4, np.pi/2, 3*np.pi/4], symmetric=True, normed=True)
+    dissimilarity = graycoprops(glcm, 'dissimilarity')
+    homogeneity = graycoprops(glcm, 'homogeneity')
+    energy = graycoprops(glcm, 'energy')
+    correlation = graycoprops(glcm, 'correlation')
+
+    # Calculate shape features
+    m = moments(gray)
+    cr, cc = centroid(m)  # center of mass coordinates
+    m_central = moments_central(gray, [cr, cc])
+    m_normalized = moments_normalized(m_central)
+    hu_moments = moments_hu(m_normalized)
+
+    # Calculate size features
+    contours, _ = cv2.findContours(
+        gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    area = cv2.contourArea(contours[0])
+    perimeter = cv2.arcLength(contours[0], True)
+
+    # Package features into a dictionary
+    features = {
+        'median_color': median_color.tolist(),
+        'dissimilarity': dissimilarity.tolist(),
+        'homogeneity': homogeneity.tolist(),
+        'energy': energy.tolist(),
+        'correlation': correlation.tolist(),
+        'hu_moments': hu_moments.tolist(),
+        'area': area,
+        'perimeter': perimeter,
+    }
+
+    return features
 
 
 def criar_pasta(nome_pasta):
@@ -137,59 +187,82 @@ def salvar_imagens_processadas(imagens, caminhos, pasta_destino):
     criar_pasta(pasta_destino)
 
     for i in range(len(imagens)):
-        for image in imagens[i]:
-            cv2.imshow('image', image)
-            cv2.waitKey(0)
+        # Extrai o nome do arquivo da imagem
+        nome_arquivo = os.path.basename(caminhos[i])
+        caminho_destino = os.path.join(pasta_destino, nome_arquivo)
 
-        # Obtém o nome do arquivo da imagem original
-        # nome_arquivo = os.path.basename(caminhos[i])
-        # caminho_destino = os.path.join(pasta_destino, nome_arquivo)
-
-        # cv2.imwrite(caminho_destino, imagens[i])
-        # print(f"Imagem processada {i+1}/{len(imagens)} salva em '{caminho_destino}'.")
+        # Salva a imagem processada
+        cv2.imwrite(caminho_destino, imagens[i])
 
 
-def test(resultados):
-    images_test = [8, 8, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8,
-                   7, 7, 7, 7, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
+def extrair_caracteristicas(imagens_processadas, caminhos):
+    results = []
+    names_leaflet = ["folhado", "araca",
+                     "quaresmeira", "pessegueiro", "coleus", "uva"]
 
-    count = 0
-    for i, resultado in enumerate(resultados):
-        # Calcular o módulo da diferença entre o resultado e o valor esperado
-        count += abs(images_test[i] - resultado)
+    for i, imagem in enumerate(imagens_processadas):
+        results_local = []
+        for contorno in imagem:
+            features = extract_features(contorno)
 
-    print(count)
+            results_local.append({
+                "nome": '',
+                "features": features
+            })
+
+        print("0 - Folhado | 1 - Araçá | 2 - Quaresmeira | 3 - Pessegueiro | 4 - Coleus | 5 - Uva")
+        nome_arquivo = os.path.basename(caminhos[i])
+        caminho_destino = os.path.join(pasta_destino, nome_arquivo)
+
+        while True:
+            values = input(f"{caminho_destino} ({len(imagem)}): ")
+
+            values = values.split(" ")
+
+            if len(values) == len(imagem):
+                break
+            # Verifica se todas as entradas são válidas
+            else:
+                for value in values:
+                    if value not in ["0", "1", "2", "3", "4", "5"]:
+                        print("Valor inválido!")
+            print("Quantidade de valores inválida!")
+        for j, value in enumerate(values):
+            results_local[j]["nome"] = names_leaflet[int(value)]
+
+        results.extend(results_local)
+
+    # Salva os resultados em um TXT
+    with open("./results.json", "w") as f:
+        # Transforma em JSON
+        f.write(json.dumps(results,
+                           indent=4,
+                           separators=(',', ': '),
+                           ))
 
 
-def extrair_caracteristicas(imagens_processadas):
-    resultados = []
-    extract_features(imagens_processadas)
+def test(imagens_processadas):
+    images_test = [8, 8, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 7,
+                   7, 7, 7, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
 
-    # for imagem in imagens_processadas:
-    #     result = extract_features(imagem)
-    #     print(result)
-    #     input()
+    for i, resultado in enumerate(imagens_processadas):
+        res = len(resultado)
+        if res != images_test[i]:
+            print(
+                f"Número de folhas na imagem {i+1}: {res} -> {images_test[i]}")
 
 
 pasta_imagens = 'images'
 pasta_destino = 'images_processed'
-largura_desejada = 254
-altura_desejada = 254
 
 # Armazena imagens processadas e caminhos dos arquivos
-imagens_processadas, caminhos = processar_imagens_pasta(
-    pasta_imagens, largura_desejada, altura_desejada)
+imagens_processadas, imagens, caminhos = processar_imagens_pasta(
+    pasta_imagens)
 
 # Salva as imagens processadas na pasta de destino
-# salvar_imagens_processadas(imagens_processadas, caminhos, pasta_destino)
+salvar_imagens_processadas(imagens, caminhos, pasta_destino)
 
+test(imagens_processadas)
 # Extrai quantidade de folhas da imagem
-resultados = extrair_caracteristicas(imagens_processadas)
-
+resultados = extrair_caracteristicas(imagens_processadas, caminhos)
 # test(resultados)
-
-images_test = [8, 8, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 7,
-               7, 7, 7, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
-
-# for i, resultado in enumerate(resultados):
-#     print(f"Número de folhas na imagem {i+1}: {resultado} -> {images_test[i]}")
