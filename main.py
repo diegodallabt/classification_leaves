@@ -36,6 +36,7 @@ def processar_imagens_pasta(pasta):
 
             # Armazena a imagem processada e o caminho do arquivo
             imagens_processadas.append(leaflets)
+
             imagens.append(image_processed)
 
     return imagens_processadas, imagens, caminhos
@@ -92,10 +93,6 @@ def segment_leaves(imagem):
 
     # Apply a morphological erosion to create a gap between touching leaves
     kernel = np.ones((2, 2), np.uint8)
-    eroded = cv2.erode(binary, kernel, iterations=10)
-
-    # Apply a morphological dilation to restore the leaves to their original size
-    dilated = cv2.dilate(eroded, kernel, iterations=10)
 
     # Find contours in the binary image
     contours, _ = cv2.findContours(
@@ -104,16 +101,20 @@ def segment_leaves(imagem):
     # Segment the leaves and store the images of individual leaves
     segmented_leaves = []
     contador = 0
+
+    imagem_copy = imagem.copy()
     for i, contour in enumerate(contours):
         x, y, w, h = cv2.boundingRect(contour)
         leaf = imagem[y:y+h, x:x+w]
-        segmented_leaves.append(leaf)
+        segmented_leaves.append(leaf.copy())
+
         # # Calcular as coordenadas do centro do retângulo
         centro_x = int(x + w/2)
         centro_y = int(y + h/2)
 
         # Desenhar um retângulo ao redor do objeto
-        cv2.rectangle(imagem, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.rectangle(imagem_copy, (x, y),
+                      (x + w, y + h), (0, 255, 0), 2)
 
         # Adicionar texto com o contador no centro do retângulo
         texto = str(contador)
@@ -121,16 +122,17 @@ def segment_leaves(imagem):
             texto, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)
         texto_x = int(centro_x - tamanho_texto[0]/2)
         texto_y = int(centro_y + tamanho_texto[1]/2)
-        cv2.putText(imagem, texto, (texto_x, texto_y),
+        cv2.putText(imagem_copy, texto, (texto_x, texto_y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
 
         # Incrementar o contador
         contador += 1
 
-    return segmented_leaves, imagem
+    return segmented_leaves, imagem_copy
 
 
 def extract_features(leaf):
+
     # Convert the image to grayscale
     gray = cv2.cvtColor(leaf, cv2.COLOR_BGR2GRAY)
 
@@ -186,13 +188,39 @@ def salvar_imagens_processadas(imagens, caminhos, pasta_destino):
     # Cria a pasta de destino se ela não existir
     criar_pasta(pasta_destino)
 
-    for i in range(len(imagens)):
-        # Extrai o nome do arquivo da imagem
-        nome_arquivo = os.path.basename(caminhos[i])
-        caminho_destino = os.path.join(pasta_destino, nome_arquivo)
+    # for i in range(len(imagens)):
+    #     # Extrai o nome do arquivo da imagem
+    #     nome_arquivo = os.path.basename(caminhos[i])
+    #     caminho_destino = os.path.join(pasta_destino, nome_arquivo)
 
-        # Salva a imagem processada
-        cv2.imwrite(caminho_destino, imagens[i])
+    #     # Salva a imagem processada
+    #     cv2.imwrite(caminho_destino, imagens[i])
+
+
+def generate_variants(imagem):
+    variants = []
+
+    rotated = imagem.copy()
+    images_rotated = []
+    for i in range(0, 360, 90):
+        rotated = cv2.rotate(rotated, cv2.ROTATE_90_CLOCKWISE)
+        variants.append(rotated)
+        images_rotated.append(rotated)
+
+    # Altera o brilho da imagem
+    for rotated in images_rotated:
+        brightness = rotated.copy()
+        for i in range(0, 45, 10):
+            brightness = cv2.convertScaleAbs(rotated, beta=i)
+            variants.append(brightness)
+
+    for rotated in images_rotated:
+        contrast = rotated.copy()
+        for i in range(5, 10, 1):
+            float_value = i/10
+            contrast = cv2.convertScaleAbs(rotated, alpha=float_value)
+            variants.append(contrast)
+    return variants
 
 
 def extrair_caracteristicas(imagens_processadas, caminhos):
@@ -202,9 +230,8 @@ def extrair_caracteristicas(imagens_processadas, caminhos):
 
     for i, imagem in enumerate(imagens_processadas):
         results_local = []
-        for contorno in imagem:
+        for j, contorno in enumerate(imagem):
             features = extract_features(contorno)
-
             results_local.append({
                 "nome": '',
                 "features": features
@@ -229,8 +256,32 @@ def extrair_caracteristicas(imagens_processadas, caminhos):
             print("Quantidade de valores inválida!")
         for j, value in enumerate(values):
             results_local[j]["nome"] = names_leaflet[int(value)]
-
         results.extend(results_local)
+
+        for j, result in enumerate(results_local):
+            variants = generate_variants(imagem[j])
+            for variant in variants:
+                features = extract_features(variant)
+                results.append({
+                    "nome": result["nome"],
+                    "features": features
+                })
+
+    max_len = 0
+    for result in results:
+        results_in = result["features"]
+        for key, value in results_in.items():
+            # Verifica se é um array
+            if type(value) == list and len(value) > max_len:
+                max_len = len(value)
+
+    for i, result in enumerate(results):
+        results_in = result["features"]
+        for key, value in results_in.items():
+            # Vai expandir os vetores para o mesmo tamanho
+            if type(value) == list:
+                results_in[key] = value + [0]*(max_len-len(value))
+        results[i]["features"] = results_in
 
     # Salva os resultados em um TXT
     with open("./results.json", "w") as f:
