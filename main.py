@@ -188,38 +188,51 @@ def salvar_imagens_processadas(imagens, caminhos, pasta_destino):
     # Cria a pasta de destino se ela não existir
     criar_pasta(pasta_destino)
 
-    # for i in range(len(imagens)):
-    #     # Extrai o nome do arquivo da imagem
-    #     nome_arquivo = os.path.basename(caminhos[i])
-    #     caminho_destino = os.path.join(pasta_destino, nome_arquivo)
+    for i in range(len(imagens)):
+        # Extrai o nome do arquivo da imagem
+        nome_arquivo = os.path.basename(caminhos[i])
+        caminho_destino = os.path.join(pasta_destino, nome_arquivo)
 
-    #     # Salva a imagem processada
-    #     cv2.imwrite(caminho_destino, imagens[i])
+        # Salva a imagem processada
+        cv2.imwrite(caminho_destino, imagens[i])
 
 
 def generate_variants(imagem):
     variants = []
 
-    rotated = imagem.copy()
-    images_rotated = []
-    for i in range(0, 360, 90):
-        rotated = cv2.rotate(rotated, cv2.ROTATE_90_CLOCKWISE)
-        variants.append(rotated)
-        images_rotated.append(rotated)
+    for i in range(0, 400, 100):
+        if i == 0:
+            resized = imagem.copy()
+        else:
+            resized = cv2.resize(imagem, (i, i), interpolation=cv2.INTER_AREA)
+            variants.append(resized)
+        rotated = resized.copy()
+        images_rotated = []
+        for i in range(0, 360, 90):
+            rotated = cv2.rotate(rotated, cv2.ROTATE_90_CLOCKWISE)
+            variants.append(rotated)
+            images_rotated.append(rotated)
 
-    # Altera o brilho da imagem
-    for rotated in images_rotated:
-        brightness = rotated.copy()
-        for i in range(0, 45, 10):
-            brightness = cv2.convertScaleAbs(rotated, beta=i)
-            variants.append(brightness)
+        # Altera o brilho da imagem
+        for rotated in images_rotated:
+            brightness = rotated.copy()
+            for i in range(0, 45, 10):
+                brightness = cv2.convertScaleAbs(rotated, beta=i)
+                variants.append(brightness)
 
-    for rotated in images_rotated:
-        contrast = rotated.copy()
-        for i in range(5, 10, 1):
-            float_value = i/10
-            contrast = cv2.convertScaleAbs(rotated, alpha=float_value)
-            variants.append(contrast)
+        for rotated in images_rotated:
+            brightness = rotated.copy()
+            for i in range(0, 35, 10):
+                brightness = cv2.convertScaleAbs(rotated, beta=-i)
+                variants.append(brightness)
+
+        for rotated in images_rotated:
+            contrast = rotated.copy()
+            for i in range(5, 10, 1):
+                float_value = i/10
+                contrast = cv2.convertScaleAbs(rotated, alpha=float_value)
+                variants.append(contrast)
+
     return variants
 
 
@@ -267,21 +280,21 @@ def extrair_caracteristicas(imagens_processadas, caminhos):
                     "features": features
                 })
 
-    max_len = 0
-    for result in results:
-        results_in = result["features"]
-        for key, value in results_in.items():
-            # Verifica se é um array
-            if type(value) == list and len(value) > max_len:
-                max_len = len(value)
+    # max_len = 0
+    # for result in results:
+    #     results_in = result["features"]
+    #     for key, value in results_in.items():
+    #         # Verifica se é um array
+    #         if type(value) == list and len(value) > max_len:
+    #             max_len = len(value)
 
-    for i, result in enumerate(results):
-        results_in = result["features"]
-        for key, value in results_in.items():
-            # Vai expandir os vetores para o mesmo tamanho
-            if type(value) == list:
-                results_in[key] = value + [0]*(max_len-len(value))
-        results[i]["features"] = results_in
+    # for i, result in enumerate(results):
+    #     results_in = result["features"]
+    #     for key, value in results_in.items():
+    #         # Vai expandir os vetores para o mesmo tamanho
+    #         if type(value) == list:
+    #             results_in[key] = value + [0]*(max_len-len(value))
+    #     results[i]["features"] = results_in
 
     # Salva os resultados em um TXT
     with open("./results.json", "w") as f:
@@ -316,4 +329,3 @@ salvar_imagens_processadas(imagens, caminhos, pasta_destino)
 test(imagens_processadas)
 # Extrai quantidade de folhas da imagem
 resultados = extrair_caracteristicas(imagens_processadas, caminhos)
-# test(resultados)
